@@ -35,6 +35,9 @@ class ValidateParams(NamedTuple):
     exclude_none: bool = False
     response_many: bool = False
     request_body_many: bool = False
+    include_error_url: bool = True
+    include_error_context: bool = True
+    include_error_input: bool = True
 
 
 class ResponseModel(BaseModel):
@@ -133,6 +136,27 @@ validate_test_cases = [
     ),
     pytest.param(
         ValidateParams(
+            query_model=QueryModel,
+            include_error_url=False,
+            include_error_context=False,
+            include_error_input=False,
+            expected_response_body={
+                "validation_error": {
+                    "query_params": [
+                        {
+                            "loc": ["q1"],
+                            "msg": "Field required",
+                            "type": "missing",
+                        }
+                    ]
+                }
+            },
+            expected_status_code=400,
+        ),
+        id="invalid query param",
+    ),
+    pytest.param(
+        ValidateParams(
             body_model=RequestBodyModel,
             expected_response_body={
                 "validation_error": {
@@ -150,6 +174,27 @@ validate_test_cases = [
             request_body_many=True,
         ),
         id="`request_body_many=True` but in request body is a single object",
+    ),
+    pytest.param(
+        ValidateParams(
+            include_error_url=False,
+            include_error_context=False,
+            include_error_input=False,
+            expected_response_body={
+                "validation_error": {
+                    "body_params": [
+                        {
+                            "loc": ["b1"],
+                            "msg": "Field required",
+                            "type": "missing",
+                        }
+                    ]
+                }
+            },
+            body_model=RequestBodyModel,
+            expected_status_code=400,
+        ),
+        id="invalid body param",
     ),
     pytest.param(
         ValidateParams(
@@ -218,6 +263,27 @@ validate_test_cases = [
             expected_status_code=400,
         ),
         id="invalid form param",
+    ),
+    pytest.param(
+        ValidateParams(
+            form_model=FormModel,
+            include_error_url=False,
+            include_error_context=False,
+            include_error_input=False,
+            expected_response_body={
+                "validation_error": {
+                    "form_params": [
+                        {
+                            "loc": ["f1"],
+                            "msg": "Field required",
+                            "type": "missing",
+                        }
+                    ]
+                }
+            },
+            expected_status_code=400,
+        ),
+        id="invalid form param without error details",
     ),
     pytest.param(
         ValidateParams(
@@ -317,6 +383,9 @@ class TestValidate:
             response_many=parameters.response_many,
             request_body_many=parameters.request_body_many,
             form=parameters.form_model,
+            include_error_url=parameters.include_error_url,
+            include_error_context=parameters.include_error_context,
+            include_error_input=parameters.include_error_input,
         )(f)()
 
         assert response.status_code == parameters.expected_status_code
@@ -356,6 +425,9 @@ class TestValidate:
             exclude_none=parameters.exclude_none,
             response_many=parameters.response_many,
             request_body_many=parameters.request_body_many,
+            include_error_url=parameters.include_error_url,
+            include_error_context=parameters.include_error_context,
+            include_error_input=parameters.include_error_input,
         )(f)()
 
         assert_matches(parameters.expected_response_body, response.json)
@@ -555,6 +627,9 @@ class TestValidate:
             exclude_none=parameters.exclude_none,
             response_many=parameters.response_many,
             request_body_many=parameters.request_body_many,
+            include_error_url=parameters.include_error_url,
+            include_error_context=parameters.include_error_context,
+            include_error_input=parameters.include_error_input,
         )(f)()
 
         assert response.status_code == parameters.expected_status_code
@@ -634,6 +709,39 @@ class TestValidate:
                 },
                 {
                     "ctx": {"class_name": "RequestBodyModel"},
+                    "input": None,
+                    "loc": ("RequestBodyModel",),
+                    "msg": "Input should be a valid dictionary or instance of RequestBodyModel",
+                    "type": "model_type",
+                    "url": re.compile(r"https://errors\.pydantic\.dev/.*/v/model_type"),
+                },
+            ],
+            excinfo.value.body_params,
+        )
+
+    def test_body_fail_validation_raise_exception_excluding_error_context(
+        self, app, request_ctx, mocker
+    ):
+        app.config["FLASK_PYDANTIC_VALIDATION_ERROR_RAISE"] = True
+        mock_request = mocker.patch.object(request_ctx, "request")
+        content_type = "application/json"
+        mock_request.headers = {"Content-Type": content_type}
+        mock_request.get_json = lambda: None
+        body_model = RequestBodyModelRoot
+        with pytest.raises(ValidationError) as excinfo:
+            validate(body_model, include_error_context=False)(lambda x: x)()
+        assert_matches(
+            [
+                {
+                    "input": None,
+                    "loc": ("str",),
+                    "msg": "Input should be a valid string",
+                    "type": "string_type",
+                    "url": re.compile(
+                        r"https://errors\.pydantic\.dev/.*/v/string_type"
+                    ),
+                },
+                {
                     "input": None,
                     "loc": ("RequestBodyModel",),
                     "msg": "Input should be a valid dictionary or instance of RequestBodyModel",
