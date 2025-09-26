@@ -120,6 +120,8 @@ def validate_path_params(
                 include_context=include_error_context,
                 include_input=include_error_input,
             )[0]
+            err["loc"] = [name]
+            errors.append(err)
         except V1ValidationError as e:
             err = e.errors()[0]
             err["loc"] = [name]
